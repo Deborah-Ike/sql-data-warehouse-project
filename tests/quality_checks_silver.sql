@@ -11,6 +11,96 @@ It includes checks for:
 -Invalid date ranges and orders
 -Data consistency between related fields
 ========================================================================================================================
+
+/* Check nulls and duplicate*/
+SELECT  prd_id,
+COUNT(*)
+FROM silver.crm_prd_info
+GROUP BY prd_id
+HAVING COUNT(*) > 1 OR prd_id IS NULL
+
+/* check unwanted space */
+SELECT prd_nm
+FROM silver.crm_prd_info
+WHERE prd_nm != TRIM(prd_nm)
+
+/* check null or negative numbers */
+SELECT prd_cost
+FROM silver.crm_prd_info
+WHERE prd_cost < 0 OR prd_cost IS NULL
+
+/* standardize and make consitent */
+SELECT DISTINCT prd_line
+FROM bronze.crm_prd_info
+
+/* check inavlid date order */
+SELECT *
+FROM bronze.crm_prd_info
+WHERE prd_end_dt < prd_start_dt
+
+/***********SALES****************/
+/* check if there are any sales order date less or equal to zero & if the length of the date is 8*/
+/* then replace all zeros with nulls*/
+SELECT
+NULLIF(sls_order_dt,0) sls_order_dt
+FROM bronze.crm_sales_details
+WHERE sls_order_dt < 0 
+OR LEN(sls_order_dt) !=8 
+OR sls_order_dt > 20500101
+OR sls_order_dt < 19000101
+
+/* do the same for sles ship date */
+SELECT
+NULLIF(sls_ship_dt,0) sls_ship_dt
+FROM bronze.crm_sales_details
+WHERE sls_ship_dt < 0 
+OR LEN(sls_ship_dt) !=8 
+OR sls_ship_dt > 20500101
+OR sls_ship_dt < 19000101
+
+/* check that the order date is smaller than ship date */
+SELECT 
+*
+FROM bronze.crm_sales_details
+WHERE sls_order_dt > sls_ship_dt OR sls_order_dt > sls_due_dt
+
+/* check data for consistency: betweeb sales, quantity, and price */
+/* sales = quantity * price */
+/* values must not be null, zero, or negative */
+
+SELECT DISTINCT
+sls_sales,
+sls_quantity,
+sls_price
+FROM bronze.crm_sales_details
+WHERE sls_sales != sls_quantity * sls_price
+OR sls_sales IS NULL OR sls_quantity IS NULL OR sls_price IS NULL
+OR sls_sales <= 0 OR sls_quantity <= 0 OR sls_price <= 0
+ORDER BY sls_sales, sls_quantity , sls_price
+
+/*In the data we have null vales negative sale price and some 0s*/
+/*Fix this with; if sales is negative, zero, or null, derive it using quantity and price */
+/*If price is zero or null, calculate it sales and quantity */
+/* If price is negative, convert it to a positive value */
+
+SELECT DISTINCT
+sls_sales AS old_sls_sales,
+sls_quantity,
+sls_price AS old_sls_price,
+CASE WHEN sls_sales IS NULL OR sls_sales <= 0 OR sls_sales != sls_quantity * ABS(sls_price)
+        THEN sls_quantity * ABS(sls_price)
+	ELSE sls_sales
+END AS sls_sales,
+CASE WHEN sls_price IS NULL OR sls_price <= 0
+        THEN sls_sales / NULLIF(sls_quantity,0) 
+	ELSE sls_price
+END AS sls_price
+FROM bronze.crm_sales_details
+WHERE sls_sales != sls_quantity * sls_price
+OR sls_sales IS NULL OR sls_quantity IS NULL OR sls_price IS NULL
+OR sls_sales <= 0 OR sls_quantity <= 0 OR sls_price <= 0
+ORDER BY sls_sales, sls_quantity , sls_price
+
 */
 /*******************************Customer information format**************************************************************/
 INSERT INTO silver.crm_cust_info (
